@@ -47,4 +47,54 @@ namespace DNWS
       throw new NotImplementedException();
     }
   }
+  class ClientInfoPlugin : IPlugin
+  {
+    protected static Dictionary<string, string> clientInfoDictionary = null;
+
+    public ClientInfoPlugin()
+    {
+      if(clientInfoDictionary==null)
+      {
+        clientInfoDictionary = new Dictionary<string, string>();    
+      }
+    }
+
+    public void PreProcessing(HTTPRequest request)
+    {
+      string requestUrl = request.Url ?? "UnknownUrl";
+
+      string clientInfo = "<b>Request URL:</b> " + requestUrl + "<br />";
+
+
+      if(!clientInfoDictionary.ContainsKey(requestUrl))
+      {
+        clientInfoDictionary[requestUrl] = clientInfo;
+      }
+
+    }
+
+    public HTTPResponse GetResponse(HTTPRequest request)
+    {
+      HTTPResponse response = null;
+      StringBuilder sb = new StringBuilder();
+      sb.Append("<html><body><h1>Client Information:</h1>");
+
+      foreach (KeyValuePair<string, string> entry in clientInfoDictionary)
+      {
+        sb.Append(entry.Value);
+      }
+
+        sb.Append("</body></html>");
+        response = new HTTPResponse(200);
+        response.body = Encoding.UTF8.GetBytes(sb.ToString());
+        return response;
+
+    }
+
+    public HTTPResponse PostProcessing(HTTPResponse response)
+    {
+      throw new NotImplementedException();
+    }
+
+  }
 }
