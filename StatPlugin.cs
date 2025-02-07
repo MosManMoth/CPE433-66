@@ -97,4 +97,70 @@ namespace DNWS
     }
 
   }
+class ThreadedServer
+    {
+        private readonly HttpListener _listener;
+        private readonly List<IPlugin> _plugins;
+
+        public ThreadedServer(string prefix)
+        {
+            _listener = new HttpListener();
+            _listener.Prefixes.Add(prefix); 
+            _plugins = new List<IPlugin> { new StatPlugin(), new ClientInfoPlugin() }; 
+        }
+
+        public void Start()
+        {
+            _listener.Start();
+            Console.WriteLine("Server started...");
+            while (true)
+            {
+                var context = _listener.GetContext();
+
+                Thread requestThread = new Thread(() => HandleRequest(context));
+                requestThread.Start();
+            }
+        }
+
+        private void HandleRequest(HttpListenerContext context)
+        {
+            var request = new HTTPRequest(context.Request.Url.AbsoluteUri);
+
+            foreach (var plugin in _plugins)
+            {
+                plugin.PreProcessing(request);
+            }
+
+            HTTPResponse response = null;
+            if (context.Request.HttpMethod == "GET")
+            {
+                foreach (var plugin in _plugins)
+                {
+                    if (plugin is StatPlugin || plugin is ClientInfoPlugin)
+                    {
+                        response = plugin.GetResponse(request);
+                    }
+                }
+            }
+
+            context.Response.StatusCode = response.StatusCode;
+            context.Response.OutputStream.Write(response.body, 0, response.body.Length);
+            context.Response.OutputStream.Close();
+
+            foreach (var plugin in _plugins)
+            {
+                plugin.PostProcessing(response);
+            }
+        }
+    }
+
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            ThreadedServer server = new ThreadedServer("http://localhost:8080/");
+            server.Start();
+        }
+    }
+  
 }
