@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace DNWS
 {
@@ -47,6 +48,7 @@ namespace DNWS
       throw new NotImplementedException();
     }
   }
+  
   class ClientInfoPlugin : IPlugin
   {
     protected static Dictionary<string, string> clientInfoDictionary = null;
@@ -97,70 +99,65 @@ namespace DNWS
     }
 
   }
+  
 class ThreadedServer
+{
+    private readonly HttpListener _listener;
+    private readonly List<IPlugin> _plugins;
+
+    public ThreadedServer(string prefix)
     {
-        private readonly HttpListener _listener;
-        private readonly List<IPlugin> _plugins;
+        _listener = new HttpListener();
+        _listener.Prefixes.Add(prefix);
+        _plugins = new List<IPlugin> { new StatPlugin(), new ClientInfoPlugin() };
+    }
 
-        public ThreadedServer(string prefix)
+    public void Start()
+    {
+        _listener.Start();
+        Console.WriteLine("Server started...");
+        while (true)
         {
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(prefix); 
-            _plugins = new List<IPlugin> { new StatPlugin(), new ClientInfoPlugin() }; 
+            var context = _listener.GetContext();
+
+            // Create a new thread for each incoming request
+            Thread requestThread = new Thread(() => HandleRequest(context));
+            requestThread.Start();
+        }
+    }
+
+    private void HandleRequest(HttpListenerContext context)
+    {
+        var request = new HTTPRequest(context.Request.Url.AbsoluteUri);
+
+        // Pre-processing through plugins
+        foreach (var plugin in _plugins)
+        {
+            plugin.PreProcessing(request);
         }
 
-        public void Start()
+        HTTPResponse response = null;
+        if (context.Request.HttpMethod == "GET")
         {
-            _listener.Start();
-            Console.WriteLine("Server started...");
-            while (true)
-            {
-                var context = _listener.GetContext();
-
-                Thread requestThread = new Thread(() => HandleRequest(context));
-                requestThread.Start();
-            }
-        }
-
-        private void HandleRequest(HttpListenerContext context)
-        {
-            var request = new HTTPRequest(context.Request.Url.AbsoluteUri);
-
+            // Handle GET request through plugins
             foreach (var plugin in _plugins)
             {
-                plugin.PreProcessing(request);
-            }
-
-            HTTPResponse response = null;
-            if (context.Request.HttpMethod == "GET")
-            {
-                foreach (var plugin in _plugins)
+                if (plugin is StatPlugin || plugin is ClientInfoPlugin)
                 {
-                    if (plugin is StatPlugin || plugin is ClientInfoPlugin)
-                    {
-                        response = plugin.GetResponse(request);
-                    }
+                    response = plugin.GetResponse(request);
                 }
             }
-
-            context.Response.StatusCode = response.StatusCode;
-            context.Response.OutputStream.Write(response.body, 0, response.body.Length);
-            context.Response.OutputStream.Close();
-
-            foreach (var plugin in _plugins)
-            {
-                plugin.PostProcessing(response);
-            }
         }
-    }
 
-    class Program
-    {
-        static void Main(string[] args)
+        // Send the response back to the client
+        context.Response.StatusCode = response.StatusCode;
+        context.Response.OutputStream.Write(response.body, 0, response.body.Length);
+        context.Response.OutputStream.Close();
+
+        // Post-processing through plugins
+        foreach (var plugin in _plugins)
         {
-            ThreadedServer server = new ThreadedServer("http://localhost:8080/");
-            server.Start();
+            plugin.PostProcessing(response);
         }
     }
-  
 }
